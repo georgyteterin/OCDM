@@ -45,16 +45,18 @@ for m=1:N
     end
 end
 
+DFnTmat = DFnTmtrx(input);
 %%
 % матрицы
 
-out1 = input'*DFnTmtrx(input);
+out1 = input'*DFnTmat;
 
 out2 = input'*Teta1*dftMat*Teta2;
 
 % преобразование
 
-tic;output1 = DFnT(input);toc;
+% tic;output1 = DFnT(input);toc;
+tic;output1 = DFnTmat*input;toc;
 
 tic;
 tmp11 = Teta1*input;
