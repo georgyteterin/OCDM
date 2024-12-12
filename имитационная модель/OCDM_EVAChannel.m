@@ -3,7 +3,7 @@ clc; clear;
 
 
 % Параметры
-    params.NFFT = 256;                     % размер сообщения/NFFT
+    params.N = 256;                     % размер сообщения/NFFT
     params.NumSubcar = 256;               % Число поднесущих "пилот + данные"
     params.pilotStep = 10;
 %     params.NumData = params.NumSubcar - params.NumPilots;
@@ -19,9 +19,11 @@ clc; clear;
 
     tmp_sig = [];
 % Задания
-    eq = 1;
+    eq = 0;
     prefix = 'CP'; % 'CP'/'ZP'
-    rayCh = 1;
+    rayCh = 0;
+    style = "ocdm";
+
 % Вычисляемые параметры
     log2M = log2(params.M);
     log2Mp = log2(params.Mp);
@@ -30,26 +32,28 @@ clc; clear;
 %     params.pilotStep = floor(params.NumSubcar/(params.NumPilots-1));
     params.NumPilots = floor(params.NumSubcar/(params.pilotStep-1));
 %     params.NumData = params.NumSubcar - params.NumPilots;
-%     params.Fs = params.NFFT/params.T;       % частота дискретизации
+%     params.Fs = params.N/params.T;       % частота дискретизации
     params.Fs = 10e5;
-    params.cpLen = 0.25*params.NFFT;
-    params.left = (params.NFFT - params.NumSubcar) / 2;       % Размер защитного интервала слева
-    params.right = (params.NFFT - params.NumSubcar) / 2;      % Размер защитного интервала справа
+    params.cpLen = 0.25*params.N;
+    params.left = (params.N - params.NumSubcar) / 2;       % Размер защитного интервала слева
+    params.right = (params.N - params.NumSubcar) / 2;      % Размер защитного интервала справа
 %     params.infBitsNum = (params.NumData - 1)*log2M;
 
+    params.DFnT_matrix = DFnTmtrx(params.N);
+    params.IDFnT_matrix = ctranspose(params.DFnT_matrix);
 %% Передающая часть 
 % Вычисление индексов информац-х, пилотных и защитных поднесущих
     % Индексы защитных интервалов
-    if params.NumSubcar == params.NFFT
+    if params.NumSubcar == params.N
         ind.left = 0;
-        ind.right = params.NFFT + 1;
+        ind.right = params.N + 1;
     else
         ind.left = (1 : params.left).';
-        ind.right = ((params.NFFT - params.right + 1) : params.NFFT).';
+        ind.right = ((params.N - params.right + 1) : params.N).';
     end
     
     % Индекс главной поднесущей
-    ind.mainCarrier = params.NFFT/2 + 1;
+    ind.mainCarrier = params.N/2 + 1;
 
     % Индексы пилотных поднесущих
     ind.pilots(1) = 1;
@@ -65,7 +69,7 @@ clc; clear;
     params.infBitsNum = (params.NumData - 1)*log2M;
     ind.pilots(params.NumPilots) = params.NumSubcar;
 %     ind.pilots(ind.pilots == ind.mainCarrier) = ind.pilots(ind.pilots == ind.mainCarrier) + 1;
-%     ind.pilots(ind.pilots>params.NFFT) = [];
+%     ind.pilots(ind.pilots>params.N) = [];
     ind.pilots = ind.pilots + ind.left(end);
 
       
@@ -114,14 +118,14 @@ for s = 1:length(h2dB)
         constellation = qammod(constInt, params.M);
 %         Es = mean(abs(constellation).^2);
 %         Eb = Es/log2M;    
-        Eb = 1/params.NFFT/log2M;
+        Eb = 1/params.N/log2M;
         clear tmp;
     % Формировнаие мод-нных символов пилотных поднесущих
         pilotSymbs = qammod(mod(0:params.NumPilots-1, 4).', params.Mp, 'gray', 'UnitAveragePower', true, 'InputType', 'integer');
 %         pilotSymbs = 3+3j;
     
     % Заготовка формирования OFDM сигнала
-        txMatrix = zeros(params.NFFT, size(txSymbols, 2));
+        txMatrix = zeros(params.N, size(txSymbols, 2));
     
     % Заполнение заготовки символами
         % Цикл по символам
@@ -133,10 +137,14 @@ for s = 1:length(h2dB)
             txMatrix(ind.data, i) = txSymbols(:, i);
         end
     
-    % Обратное дискретное преобразование Фурьe
-    txSignal = ifft(ifftshift(txMatrix), params.NFFT);
+    % Обратное дискретное преобразование Френеля
+    if style == "ofdm"
+        txSignal = ifft(ifftshift(txMatrix), params.N);
+    else
+        txSignal = params.IDFnT_matrix * txMatrix;
+    end
         
-    txSignalWithPrefix = zeros(params.cpLen + params.NFFT, size(txSignal, 2));
+    txSignalWithPrefix = zeros(params.cpLen + params.N, size(txSignal, 2));
     % Защитный интервал 
      if(prefix == "CP")
         txSignalWithPrefix(1 : params.cpLen, :) = txSignal(end - params.cpLen + 1 : end, :);
@@ -161,7 +169,7 @@ for s = 1:length(h2dB)
             rayleighChan.release();
             [~, index] = max(CR);
             rxSignal = rayleighChan([txSignal; zeros(index,1)]);
-            rxSignalBeforeAWGN = rxSignal(index:index+params.NFFT+params.cpLen-1);
+            rxSignalBeforeAWGN = rxSignal(index:index+params.N+params.cpLen-1);
             tmp_sig = [tmp_sig; rxSignalBeforeAWGN];
         else
             rxSignalBeforeAWGN = txSignal;
@@ -180,10 +188,14 @@ for s = 1:length(h2dB)
     % Приёмная часть
     % Обработка принятого сигнала
         % Разбиение по кадрам
-        rxMatrix = reshape(rxSignal, params.NFFT + params.cpLen, []);
+        rxMatrix = reshape(rxSignal, params.N + params.cpLen, []);
         rxMatrix = rxMatrix(params.cpLen + 1 : end, :);
-        % Прямое ДПФ
-        rxMatrix = fftshift(fft(rxMatrix,  params.NFFT));
+        % Прямое Преобразование Френеля
+        if style == "ofdm"
+            rxMatrix = fftshift(fft(rxMatrix,  params.N));
+        else
+            rxMatrix = params.DFnT_matrix * rxMatrix;
+        end
 
     
     % Извлечение символов
@@ -232,4 +244,4 @@ hold on;
 semilogy(h2dB, BERth, '--');
 ylim([10^-6 1]);
 % legend AutoUpdate on;
-legend('', [ 'OFDM 16-QAM ZF Шаг ппилотов = ' num2str(params.pilotStep)], '16-QAM');
+legend('', [ 'OCDM 16-QAM ZF Шаг ппилотов = ' num2str(params.pilotStep)], '16-QAM');

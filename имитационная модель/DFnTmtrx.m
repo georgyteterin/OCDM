@@ -1,14 +1,11 @@
-function dFnT_output = DFnT(input_signal, varargin)
+function dFnT_output = DFnTmtrx(len, varargin)
 %Muneeb Ahmad
 %Supported by: BK21FOUR MERIT
 %WENS, KIT
-    sz = size(input_signal);
-    % Ensure the input_signal is a column vector
-    input_signal = input_signal(:);
     
     % Determine the value of N
     if nargin == 1
-        N = length(input_signal);
+        N = len;
     else
         N = varargin{1};
     end
@@ -19,9 +16,9 @@ function dFnT_output = DFnT(input_signal, varargin)
     pi_over_N = pi / N;
 
     % Constructing the DFnT matrix
-    dFnT_matrix = zeros(N, length(input_signal));
+    dFnT_matrix = zeros(N, len);
     for m = 1:N
-        for n = 1:length(input_signal)
+        for n = 1:len
             if mod(N, 2) == 0  % For even N
                 phase = pi_over_N * (m - n)^2;
             else  % For odd N
@@ -31,9 +28,6 @@ function dFnT_output = DFnT(input_signal, varargin)
         end
     end
 
-    % Applying the DFnT
-%     tmp = dFnT_matrix * input_signal;
-%     dFnT_output = reshape(tmp, sz);
     dFnT_output = dFnT_matrix;
     clear tmp;
 end
