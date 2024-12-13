@@ -5,9 +5,10 @@ clc; clear;
 % Параметры
     params.N = 256;                     % размер сообщения/NFFT
     params.NumSubcar = 256;               % Число поднесущих "пилот + данные"
-    params.pilotStep = 10;
+    params.pilotStep = 5;
 %     params.NumData = params.NumSubcar - params.NumPilots;
     params.T = 4e-6;                        % длительность символа включая префикс в с
+    params.Fs = 10e4;
     params.cpDur = 0.8e-6;                 % длительность префикса в с    
     params.M = 16;                          % Размер созвездия для информационных поднесущих
     params.Mp = 4;
@@ -19,9 +20,9 @@ clc; clear;
 
     tmp_sig = [];
 % Задания
-    eq = 0;
+    eq = 1;
     prefix = 'CP'; % 'CP'/'ZP'
-    rayCh = 0;
+    rayCh = 1;
     style = "ocdm";
 
 % Вычисляемые параметры
@@ -33,7 +34,6 @@ clc; clear;
     params.NumPilots = floor(params.NumSubcar/(params.pilotStep-1));
 %     params.NumData = params.NumSubcar - params.NumPilots;
 %     params.Fs = params.N/params.T;       % частота дискретизации
-    params.Fs = 10e5;
     params.cpLen = 0.25*params.N;
     params.left = (params.N - params.NumSubcar) / 2;       % Размер защитного интервала слева
     params.right = (params.N - params.NumSubcar) / 2;      % Размер защитного интервала справа
@@ -96,6 +96,7 @@ clc; clear;
     
 
 for s = 1:length(h2dB)
+% for s = length(h2dB)
     SNR = h2dB(s);
     EbN0 = convertSNR(SNR,'ebno',BitsPerSymbol=log2M);
     for Frame = 1:NumFrame
@@ -121,7 +122,7 @@ for s = 1:length(h2dB)
         Eb = 1/params.N/log2M;
         clear tmp;
     % Формировнаие мод-нных символов пилотных поднесущих
-        pilotSymbs = qammod(mod(0:params.NumPilots-1, 4).', params.Mp, 'gray', 'UnitAveragePower', true, 'InputType', 'integer');
+        txPilots = qammod(mod(0:params.NumPilots-1, 4).', params.Mp, 'gray', 'UnitAveragePower', true, 'InputType', 'integer');
 %         pilotSymbs = 3+3j;
     
     % Заготовка формирования OFDM сигнала
@@ -131,7 +132,7 @@ for s = 1:length(h2dB)
         % Цикл по символам
         for i = 1 : size(txMatrix, 2)
             % Заполнение пилотами
-            txMatrix(ind.pilots, i) = pilotSymbs;
+            txMatrix(ind.pilots, i) = txPilots;
     
             % Заполнение информацией
             txMatrix(ind.data, i) = txSymbols(:, i);
@@ -175,10 +176,7 @@ for s = 1:length(h2dB)
             rxSignalBeforeAWGN = txSignal;
         end
         % АБГШ
-%         h2 = 10^(h2dB(SNR)/10);
-%         No = Eb/h2;
-%         noise = sqrt(1/2 * randn(length(rxSignalBeforeAWGN), 2) * 2 * No) * [1; 1j];
-%         
+     
         
         N0 = Eb/10^(SNR/10);
         noise = normrnd(0,sqrt(N0/2),length(rxSignalBeforeAWGN),2) * [1; 1i];
@@ -194,7 +192,7 @@ for s = 1:length(h2dB)
         if style == "ofdm"
             rxMatrix = fftshift(fft(rxMatrix,  params.N));
         else
-            rxMatrix = params.DFnT_matrix * rxMatrix;
+            rxMatrix = params.DFnT_matrix * rxMatrix * params.N;
         end
 
     
@@ -217,10 +215,11 @@ for s = 1:length(h2dB)
     % Эквалайзер
     if(eq == 1)
         rxPilots1D = rxPilots(:, 1);
-        txPilots1D = pilotSymbs(:);
+        txPilots1D = txPilots(:);
         H =  rxPilots1D ./ txPilots1D;
         Heq = interp1(ind.pilots, H, ind.data, 'spline');
         rxSymbols = rxSymbols ./ Heq;
+%         rxPilots = rxPilots ./ H;
     end
     % Демодуляция
         rxBitsExtended = qamdemod(rxSymbols, params.M, 'gray', 'UnitAveragePower', true, 'OutputType', 'bit');
@@ -244,4 +243,8 @@ hold on;
 semilogy(h2dB, BERth, '--');
 ylim([10^-6 1]);
 % legend AutoUpdate on;
-legend('', [ 'OCDM 16-QAM ZF Шаг ппилотов = ' num2str(params.pilotStep)], '16-QAM');
+if style == 'ocdm'
+    legend('', [ 'OCDM 16-QAM ZF Шаг ппилотов = ' num2str(params.pilotStep)], '16-QAM');
+else
+    legend('', [ 'OFDM 16-QAM ZF Шаг ппилотов = ' num2str(params.pilotStep)], '16-QAM');
+end
