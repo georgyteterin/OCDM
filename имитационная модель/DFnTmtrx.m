@@ -1,9 +1,4 @@
 function dFnT_output = DFnTmtrx(len, varargin)
-%Muneeb Ahmad
-%Supported by: BK21FOUR MERIT
-%WENS, KIT
-    
-    % Determine the value of N
     if nargin == 1
         N = len;
     else
@@ -24,8 +19,8 @@ function dFnT_output = DFnTmtrx(len, varargin)
             else  % For odd N
                 phase = pi_over_N * (m + 0.5 - n)^2;
             end
-%             dFnT_matrix(m, n) = (1 / sqrtN) * exp_neg_j_pi_over_4 * exp(1j * phase);
-            dFnT_matrix(m, n) = (1 / N) * exp_neg_j_pi_over_4 * exp(1j * phase);
+            dFnT_matrix(m, n) = (1 / sqrtN) * exp_neg_j_pi_over_4 * exp(1j * phase);
+%             dFnT_matrix(m, n) = (1 / N) * exp_neg_j_pi_over_4 * exp(1j * phase);
         end
     end
 
