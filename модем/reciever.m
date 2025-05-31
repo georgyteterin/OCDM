@@ -1,13 +1,13 @@
 clear, clc
-load("txData.mat")
-ref_pilot = pilot_ocdm_symbol;
-clear pilot_ocdm_symbol
+load("txData_2905_1523.mat")
+% load("txData.mat")
 N = 64;
+fs = 1e7;
 mtrx = DFnTmtrx(N); %нужно добавить сохранение всех параметров в .mat файл
-% mapper = comm.RectangularQAMModulator(4, "BitInput",true);
+
 mapper = comm.PSKModulator(4, 0, "BitInput",true);
-% demapper = comm.RectangularQAMDemodulator(4, "BitOutput",true);
 demapper = comm.PSKDemodulator(4, 0, "BitOutput",true);
+
 phaseRotate = zeros(N, 1);
 for k=0:N-1
     switch mod(N, 2)
@@ -18,84 +18,90 @@ for k=0:N-1
     end
 end
 clear k;
-eq = 1;
 
+%============Параметры============
+eq = 0;
 sdr_type = "usrp"; %'usrp'/'hackrf'
 
-% load("rx_baseband.mat")
-
+% ============Чтение============
 if sdr_type == "hackrf"
     rx = audioread("14-13-39_2199000000Hz.wav");
     rx_baseband = rx(:,1) + 1i*rx(:,2);
 elseif sdr_type == "usrp"
-    fd = fopen('C:\records_usrp\28_05\rec2.bin','rb');
+    fd = fopen('C:\records_usrp\30_05\rec3.bin','rb');
 %     fd = fopen('C:\Users\гоша\Documents\VKR\tx_record.bin','rb');
     y = fread(fd, 'int16');
     fclose(fd);
     rx_baseband = y(1:2:end) + 1i*y(2:2:end);
 end
-rx_baseband = rx_baseband(100:end);
-% rx_baseband = rx_baseband - mean(rx_baseband);
-[spect_values, spect_pos] = pwelch(rx_baseband.^2, [],[],[],1e7, 'centered');
-[max_spec, max_pos] = max(spect_values);
-freq_shift = spect_pos(max_pos);
-rx_baseband = rx_baseband.*exp(1i*2*pi*-freq_shift/2*(0:length(rx_baseband)-1)/1e7).';
 
+% rec1 ... delta f = +90
+% rec2 ... delta f = + 123
+% rec3 ... delta f = 132
+% rec4 ... delta f = 149
+% rec5 ... delta f = 90
+% rx_baseband = rx_baseband(1:1e6);
+% rx_baseband = rx_baseband.*exp(1i*2*pi*-1e6*(0:length(rx_baseband)-1)/fs).';
+rx_baseband = rx_baseband.*exp(1i*2*pi*132*(0:length(rx_baseband)-1)/fs).';
+rx_baseband = decimate(rx_baseband, 2, 'fir');
+fs = fs/2;
 
-% rx_dec = decimate(rx_baseband, 2, 'fir');
-corr = xcorr(rx_baseband, preambule);
-corr = corr(length(rx_baseband)-length(preambule):end);
+corr = xcorr(rx_baseband, preambule1);
+corr = corr(length(rx_baseband)-length(preambule1):end);
 %%
-gate = max(abs(corr))*3/4;
+gate = max(abs(corr))*5/6;
 [val, pos] = findpeaks(abs(corr), "MinPeakHeight", gate);
-
 %%
 globalSyms = [];
 EbN0_est = [];
-EbN0_paket = [];
 SER = [];
-massive_phi = [];
-carrSynch = comm.CarrierSynchronizer('Modulation','QPSK', 'SamplesPerSymbol', 1, 'ModulationPhaseOffset', 'Custom', 'CustomPhaseOffset', 0);
-for ind=1:length(pos)
-    num = ind;
-    phi = angle(corr(pos(num)));
-%     massive_phi = [massive_phi phi];
+d_phi_global = [];
+phi_global = [];
+for ind=1:length(pos)-1
+    phi = angle(corr(pos(ind)));
+    phi_global = [phi_global phi];
+       
     shift = 0;
-    rx_ocdm_frame = rx_baseband(pos(num)+shift:pos(num)+10001*80*2+shift-1);
-    rx_ocdm_frame = rx_ocdm_frame*exp(1i*-(angle(corr(pos(num)))));
-    pwelch(rx_ocdm_frame, [], [], [], 10e6, 'centered'); pause(0.05)
-%     rx_ocdm_frame = 2.5*rx_ocdm_frame/max(abs(rx_ocdm_frame));
-%     pwelch(rx_ocdm_frame, [],[],[],2e7, 'centered'); pause(0.1);
-    tmp = movmean(rx_ocdm_frame, 300);
-    tmp = rx_ocdm_frame - tmp;
-    tmp = rx_ocdm_frame;
-    %     rx_ocdm_frame_dec = decimate(rx_ocdm_frame, 2, 'fir');
-    tmp_dec = decimate(tmp, 2, 'fir');
-    
 
+    rx_ocdm_frame = rx_baseband(pos(ind) + 2*length(preambule2)+shift:pos(ind) + 2*length(preambule2) + 880 - 1+shift);
+    rx_ocdm_frame = rx_ocdm_frame*exp(1i*-phi);
+
+    rx_pr2 = rx_baseband(pos(ind):pos(ind)+length(preambule2) - 1);
+    rx_pr3 = rx_baseband(pos(ind)+length(preambule2):pos(ind)+2*length(preambule2)-1);
+    rx_pr2 = rx_pr2*exp(1i*-phi);
+    rx_pr3 = rx_pr3*exp(1i*-phi);
+    cor_val2 = sum((rx_pr2).*conj(preambule2));
+    cor_val3 = sum((rx_pr3).*conj(preambule2));
+
+    d_phi = angle(cor_val3) - angle(cor_val2);
+    d_phi_global = [d_phi_global d_phi];
+
+    freq_shift(ind) = d_phi/(length(preambule2)/fs)/2/pi;
+    rx_ocdm_frame = (2.5/max(abs(rx_ocdm_frame)))*rx_ocdm_frame;
+%      pwelch(resample(rx_ocdm_frame, 2, 1), [], [], [], 2*fs, 'centered'), pause(0.01);
+    rx_ocdm_frame = rx_ocdm_frame.*exp(1i*-freq_shift(ind)*(0:length(rx_ocdm_frame)-1)/fs).';
     % выделение пилотного сигнала
-    pilot_ocdm_sym = tmp_dec(1:80);
+    pilot_ocdm_sym = rx_ocdm_frame(1:80);
     pilot_ocdm_sym = pilot_ocdm_sym(17:end);
     ref_pilot_no_CP = ref_pilot(17:end);
     chanEst = (fft(pilot_ocdm_sym, N).*phaseRotate)./(fft(ref_pilot_no_CP, N).*phaseRotate);
-%     chanEst(1) = 1;
     pilot_ocdm_sym_fft = fft(pilot_ocdm_sym, N);
     pilot_ocdm_sym_rot = pilot_ocdm_sym_fft.*phaseRotate;
     pilot_ocdm_sym_eq = pilot_ocdm_sym_rot./chanEst;
     pilot_syms = ifft(pilot_ocdm_sym_eq, N);
+
     %     chanEst = (fft(ref_pilot, N))./(fft(pilot_ocdm_sym, N));
     %     plot(mtrx*pilot_ocdm_sym, 'o'); pause(0.05);
 
     %     globalSyms = [];
     %     SymbolError = zeros(10, 1);
-%     plot(10*log10(abs(fftshift(chanEst)))); hold on; pause(0.1);
-    for symNum=7000:10001 % ДЛЯ ОЦЕНКИ КАНАЛА ПОМЕНЯТЬ НА 2:11
+    plot(10*log10(abs(fftshift(chanEst)))); hold on; pause(0.1);
+    for symNum=2:11% ДЛЯ ОЦЕНКИ КАНАЛА ПОМЕНЯТЬ НА 2:11
         symLen = 80;
-        ocdm_sym = tmp_dec(1+symLen*(symNum-1):symLen*symNum);
-        pwelch(ocdm_sym, [], [], [], 10e6, 'centered'); pause(0.05)
+        ocdm_sym = rx_ocdm_frame(1+symLen*(symNum-1):symLen*symNum);
+%         pwelch(ocdm_sym, [], [], [], 10e6, 'centered'); pause(0.05)
         ocdm_sym = ocdm_sym(17:end);
-        phi_sym = angle(ocdm_sym(1));
-        massive_phi = [massive_phi phi_sym];
+%         ocdm_sym = ocdm_sym.*exp(1i*2*pi*-freq_shift*(0:length(ocdm_sym)-1)/fs).';
         ocdm_sym_fft = fft(ocdm_sym, N);
         ocdm_sym_rot = ocdm_sym_fft.*phaseRotate;
         if ~eq
@@ -105,30 +111,19 @@ for ind=1:length(pos)
         end
         syms = ifft(ocdm_sym_eq, N);
         syms = syms - mean(syms);
-        syms = carrSynch(syms);
         %         plot(syms, 'o');xlim([-0.2 0.2]); ylim([-0.2 0.2]); pause(0.05);
         %         syms = syms*exp(-1j*pi/8);
         globalSyms = [globalSyms; syms];
         %         syms = mtrx*ocdm_sym*exp(1j*pi/2);
-        rxEb = (abs(mean(syms(real(syms*exp(1j*pi/4))>0 & imag(syms*exp(1j*pi/4))>0))))^2;
-        rxVar = var(syms(real(syms*exp(1j*pi/4))>0 & imag(syms*exp(1j*pi/4))>0));
         
 
-        EbN0_est = [EbN0_est snr_est(syms)-3]; 
+        EbN0_est = [EbN0_est snr_est(syms)]; 
 
 
         bits = demapper(syms);
         BitError = biterr(bits, all_data(symNum-1, :)');
         SER = [SER BitError];
-%         plot(syms, 'o'); xlim([-2 2]); ylim([-2 2]);pause(0.05);
+%         plot(syms, 'o'); xlim([-1.5 1.5]); ylim([-1.5 1.5]);pause(0.05);
     end
-    EbN0_paket = [EbN0_paket mean(EbN0_est((ind-1)*10+1:ind*10))];
-%     carrSynch.release;
-%     carrSynch.reset;
-    %     meanSymbolError = mean(SymbolError);
-    %     frameError(ind, 1) = meanSymbolError;
 end
-% meanFrameError = mean(frameError);
-% close all
-
 
