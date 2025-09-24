@@ -28,7 +28,7 @@ if sdr_type == "hackrf"
     rx = audioread("14-13-39_2199000000Hz.wav");
     rx_baseband = rx(:,1) + 1i*rx(:,2);
 elseif sdr_type == "usrp"
-    fd = fopen('C:\records_usrp\30_05\rec3.bin','rb');
+    fd = fopen('C:\records_usrp\30_05\rec1.bin','rb');
 %     fd = fopen('C:\Users\гоша\Documents\VKR\tx_record.bin','rb');
     y = fread(fd, 'int16');
     fclose(fd);
@@ -42,7 +42,7 @@ end
 % rec5 ... delta f = 90
 % rx_baseband = rx_baseband(1:1e6);
 % rx_baseband = rx_baseband.*exp(1i*2*pi*-1e6*(0:length(rx_baseband)-1)/fs).';
-rx_baseband = rx_baseband.*exp(1i*2*pi*132*(0:length(rx_baseband)-1)/fs).';
+rx_baseband = rx_baseband.*exp(1i*2*pi*90*(0:length(rx_baseband)-1)/fs).';
 rx_baseband = decimate(rx_baseband, 2, 'fir');
 fs = fs/2;
 
@@ -57,6 +57,7 @@ EbN0_est = [];
 SER = [];
 d_phi_global = [];
 phi_global = [];
+chan_est_global = [];
 for ind=1:length(pos)-1
     phi = angle(corr(pos(ind)));
     phi_global = [phi_global phi];
@@ -85,6 +86,7 @@ for ind=1:length(pos)-1
     pilot_ocdm_sym = pilot_ocdm_sym(17:end);
     ref_pilot_no_CP = ref_pilot(17:end);
     chanEst = (fft(pilot_ocdm_sym, N).*phaseRotate)./(fft(ref_pilot_no_CP, N).*phaseRotate);
+    chan_est_global = [chan_est_global chanEst];
     pilot_ocdm_sym_fft = fft(pilot_ocdm_sym, N);
     pilot_ocdm_sym_rot = pilot_ocdm_sym_fft.*phaseRotate;
     pilot_ocdm_sym_eq = pilot_ocdm_sym_rot./chanEst;
@@ -95,7 +97,8 @@ for ind=1:length(pos)-1
 
     %     globalSyms = [];
     %     SymbolError = zeros(10, 1);
-    plot(10*log10(abs(fftshift(chanEst)))); hold on; pause(0.1);
+%     plot(10*log10(abs(fftshift(chanEst)))); pause(0.1);
+%     pwelch(resample(pilot_ocdm_sym, 2, 1), [], [], [], fs*2, 'centered'); pause(0.1);
     for symNum=2:11% ДЛЯ ОЦЕНКИ КАНАЛА ПОМЕНЯТЬ НА 2:11
         symLen = 80;
         ocdm_sym = rx_ocdm_frame(1+symLen*(symNum-1):symLen*symNum);
@@ -118,7 +121,10 @@ for ind=1:length(pos)-1
         
 
         EbN0_est = [EbN0_est snr_est(syms)]; 
-
+        
+%         if (snr_est(syms) > 5.5 && snr_est(syms) < 6.5)
+%             globalSyms = [globalSyms; syms];
+%         end
 
         bits = demapper(syms);
         BitError = biterr(bits, all_data(symNum-1, :)');

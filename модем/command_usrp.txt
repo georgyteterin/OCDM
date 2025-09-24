@@ -1,0 +1,1 @@
+rx_samples_to_file.exe --freq 1500e6 --rate 1e7 --file C:\records_usrp\29_05\rec2.bin  --gain 3 --ref external

@@ -8,8 +8,8 @@ function snr = snr_est(r)
     D = b.^2 - 4*a*c;
     
     if D < 0 
-        error("D<0")
-%         D = 1;
+%         error("D<0")
+        D = NaN;
     end
     
     Pn1 = (-b+sqrt(D))/2*a;

@@ -1,0 +1,1 @@
+hackrf_transfer.exe -t C:\Users\гоша\Documents\VKR\tx_record.bin -f 2.2e9 -s 1e7 -x 30 -R
